@@ -27,6 +27,13 @@ EPP = "36687f9e-e3a5-4dbf-b1dc-15eb381c6863"
 USB = "2a737441-1930-4402-8d77-b2bebba308a3"
 USB_SUSPEND = "48e6b7a6-50f5-4782-a5d4-53bb8f07e226"
 
+# Punto medio para juegos (League of Legends): parte de la base del perfil
+# "normal" y solo limita la CPU. Ajusta estos cuatro valores a gusto.
+GAMING_CPU_MIN = "5"    # CPU minima (%)
+GAMING_CPU_MAX = "25"   # CPU maxima (%) — mitad entre el 5% de ahorro extremo y el 100% de normal
+GAMING_TURBO = "0"      # Turbo apagado: menos calor y sin picos de consumo
+GAMING_EPP = "30"       # EPP equilibrado/respuesta: sube rapido dentro del limite, sin tirones
+
 
 class DEVMODEW(ctypes.Structure):
     _fields_ = [
@@ -207,6 +214,31 @@ def build_commands(profile):
         commands.append((["/setactive", "SCHEME_CURRENT"], "Plan de energía: aplicado"))
         return commands, gpu_reset_commands()
 
+    if profile == "gaming":
+        # Punto medio: misma base limpia que "normal" (sin ahorros de USB, PCIe
+        # ni discos, para evitar tirones) mas una tapa suave de CPU al ~25%.
+        # No se tocan los nucleos activos ni la GPU: esta queda en relojes
+        # automaticos, sin overclock ni limite forzado.
+        commands = [
+            (["/restoredefaultschemes"], "Planes de energía: restaurados a los valores de fábrica de Windows"),
+            (["/setactive", "SCHEME_BALANCED"], "Plan activo: Equilibrado (predeterminado de Windows)"),
+        ]
+        for group, setting, value, label in (
+            (USB, USB_SUSPEND, "0", "Suspensión selectiva USB: desactivada"),
+            ("SUB_PCIEXPRESS", "ASPM", "0", "PCI Express: ahorro desactivado"),
+            ("SUB_DISK", "DISKIDLE", "0", "Apagado de discos: desactivado"),
+        ):
+            commands.extend(both("SCHEME_BALANCED", group, setting, value, label))
+        for group, setting, value, label in (
+            (PROCESSOR, TURBO, GAMING_TURBO, "Turbo Boost: desactivado (menos calor)"),
+            ("SUB_PROCESSOR", "PROCTHROTTLEMIN", GAMING_CPU_MIN, "CPU mínima: {}%".format(GAMING_CPU_MIN)),
+            ("SUB_PROCESSOR", "PROCTHROTTLEMAX", GAMING_CPU_MAX, "CPU máxima: {}% (punto medio para juegos)".format(GAMING_CPU_MAX)),
+            (PROCESSOR, EPP, GAMING_EPP, "EPP: equilibrado/respuesta (sin tirones)"),
+        ):
+            commands.extend(both("SCHEME_BALANCED", group, setting, value, label))
+        commands.append((["/setactive", "SCHEME_BALANCED"], "Plan de energía: aplicado"))
+        return commands, gpu_reset_commands()
+
     raise ValueError("Perfil desconocido: {}".format(profile))
 
 
@@ -219,13 +251,13 @@ class EnergyApp:
     def __init__(self, root):
         self.root = root
         root.title("Control de energía")
-        root.geometry("540x420")
-        root.minsize(480, 330)
+        root.geometry("540x480")
+        root.minsize(480, 390)
         root.configure(bg=self.BG)
 
         tk.Label(root, text="CONTROL DE ENERGÍA", bg=self.BG, fg=self.TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=26, pady=(24, 2))
-        tk.Label(root, text="Normal por defecto y ahorro extremo · sin reinicio",
+        tk.Label(root, text="Normal, punto medio para juegos y ahorro extremo · sin reinicio",
                  bg=self.BG, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", padx=27, pady=(0, 16))
 
         panel = tk.Frame(root, bg=self.PANEL, padx=18, pady=16)
@@ -237,15 +269,17 @@ class EnergyApp:
                                 bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9), anchor="w", justify="left", wraplength=440)
         self.details.pack(fill="x", pady=(6, 0))
 
-        self.ultra_button = self.make_button(root, "Ahorro extremo · consumo mínimo", "#166534", "#15803d",
-                                             lambda: self.apply_profile("ultra"))
         self.normal_button = self.make_button(root, "Normal · todo por defecto de Windows", "#1d4ed8", "#2563eb",
                                               lambda: self.apply_profile("normal"))
-        self.buttons = [self.ultra_button, self.normal_button]
+        self.gaming_button = self.make_button(root, "Juegos · LoL · punto medio (CPU ~25%)", "#b45309", "#d97706",
+                                              lambda: self.apply_profile("gaming"))
+        self.ultra_button = self.make_button(root, "Ahorro extremo · consumo mínimo", "#166534", "#15803d",
+                                             lambda: self.apply_profile("ultra"))
+        self.buttons = [self.normal_button, self.gaming_button, self.ultra_button]
         for button in self.buttons:
             button.pack(fill="x", padx=22, pady=6, ipady=8)
         tk.Label(root,
-                 text="Los cambios se aplican al instante; no hace falta reiniciar. Normal restablece todos los planes a los valores de fábrica de Windows, activa Equilibrado y quita los ahorros de energía de USB, PCI Express y discos (nada se limita ni se apaga solo). Ahorro extremo limita la CPU al 5%, activa al máximo el ahorro de USB y PCIe, apaga discos y pantalla pronto y pone el monitor a 60 Hz: el PC queda lento pero estable. Los valores se aplican con y sin batería.",
+                 text="Los cambios se aplican al instante; no hace falta reiniciar. Normal restablece los planes a valores de fábrica, activa Equilibrado y quita los ahorros de USB, PCI Express y discos (nada se limita). Juegos · LoL usa esa misma base y solo limita la CPU al ~25% (mitad entre el 5% de ahorro extremo y el 100% de normal): menos calor, sin tirones, monitor a su frecuencia máxima y GPU en relojes automáticos (sin overclock ni límite forzado). Ahorro extremo limita la CPU al 5%, activa al máximo el ahorro de USB y PCIe, apaga discos y pantalla pronto y pone el monitor a 60 Hz: el PC queda lento pero estable. Los valores se aplican con y sin batería.",
                  bg=self.BG, fg=self.MUTED, font=("Segoe UI", 8), wraplength=490,
                  justify="left").pack(anchor="w", padx=26, pady=(10, 0))
 
@@ -294,8 +328,9 @@ class EnergyApp:
             self.details.configure(text=display_result + "\n" + summary)
             messagebox.showwarning("Aplicación parcial", "Algunos ajustes no se pudieron aplicar:\n\n" + "\n".join(failures), parent=self.root)
         else:
-            names = {"ultra": "AHORRO EXTREMO", "normal": "NORMAL · POR DEFECTO"}
-            colors = {"ultra": "#4ade80", "normal": "#60a5fa"}
+            names = {"ultra": "AHORRO EXTREMO", "normal": "NORMAL · POR DEFECTO",
+                     "gaming": "JUEGOS · LOL · PUNTO MEDIO"}
+            colors = {"ultra": "#4ade80", "normal": "#60a5fa", "gaming": "#fbbf24"}
             self.status.configure(text="Perfil {} aplicado".format(names[profile]), fg=colors[profile])
             self.details.configure(text=display_result + " Todos los comandos finalizaron correctamente.")
 

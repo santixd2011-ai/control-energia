@@ -2,6 +2,16 @@
 
 Utilidad de Windows que permite gestionar el plan de energía y la frecuencia de actualización de la pantalla desde una interfaz gráfica sencilla.
 
+## Perfiles
+
+| Perfil | Qué hace |
+|---|---|
+| **Normal** | Restaura los planes a valores de fábrica, activa Equilibrado y desactiva los ahorros de USB, PCIe y discos. Nada se limita. |
+| **Juegos · LoL (punto medio)** | Misma base que Normal, pero con la **CPU limitada al ~25%** (mínimo 5%, Turbo apagado, EPP equilibrado). Menos calor y sin tirones; la GPU queda en relojes automáticos (sin overclock ni límite forzado) y el monitor usa su frecuencia máxima. Pensado para jugar League of Legends sin que el PC se dispare de consumo. |
+| **Ahorro extremo** | CPU al 5%, ahorro máximo de USB y PCIe, discos y pantalla se apagan pronto y monitor a 60 Hz. El PC queda lento pero estable. |
+
+Los valores del punto medio se ajustan con las constantes `GAMING_CPU_MIN`, `GAMING_CPU_MAX`, `GAMING_TURBO` y `GAMING_EPP` al inicio de `Control_Energia.pyw`. Todos los perfiles se aplican al instante, con y sin batería, y no requieren reinicio. La app solo ejecuta comandos de energía una vez: no monitorea sensores ni consume CPU/GPU en segundo plano.
+
 ## Descarga rápida (no necesitas instalar Python)
 
 | Archivo | Para quién |
